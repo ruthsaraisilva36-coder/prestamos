@@ -257,10 +257,13 @@ h3.sec{font-size:13px;color:var(--suave);font-weight:500;margin:20px 0 4px}
   <div class="cajaClave">
     <div style="font-size:19px;font-weight:600;margin-bottom:6px">Escribe tu clave</div>
     <div class="nota" style="margin-bottom:14px">Cuatro números</div>
-    <input id="claveIn" inputmode="numeric" maxlength="4" type="password" style="text-align:center;font-size:28px;letter-spacing:12px"
-      onkeyup="if(event.key==='Enter')entrar()" oninput="if(this.value.length===4)entrar()">
+    <input id="claveIn" inputmode="numeric" maxlength="4" type="password" autocomplete="one-time-code" name="clave-prestamos"
+      style="text-align:center;font-size:28px;letter-spacing:12px"
+      onkeyup="if(event.key==='Enter')entrar()"
+      oninput="this.value=this.value.replace(/\D/g,'');if(this.value.length===4)entrar()">
     <div id="claveErr" class="nota t-rojo" style="min-height:18px"></div>
     <button class="btn" onclick="entrar()">Entrar</button>
+    <div id="olvide" class="oculto"><div class="nota" style="color:var(--fucsia);cursor:pointer;font-weight:600" onclick="olvideClave()">No recuerdo mi clave</div></div>
   </div>
 </div>
 
@@ -982,15 +985,28 @@ function guardarPin(){
   persistir();
   alert(v?'Clave guardada. Te la va a pedir la próxima vez que abras.':'Clave quitada.');
 }
+let intentos=0;
 function entrar(){
-  const v=document.getElementById('claveIn').value;
-  if(v===datos.pin){
+  const v=document.getElementById('claveIn').value.replace(/\D/g,'');
+  if(v===String(datos.pin)){
     document.getElementById('bloqueo').classList.add('oculto');
     document.getElementById('claveIn').value='';
+    document.getElementById('claveErr').textContent='';
+    intentos=0;
   }else if(v.length>=4){
+    intentos++;
     document.getElementById('claveErr').textContent='Clave incorrecta';
     document.getElementById('claveIn').value='';
+    if(intentos>=3) document.getElementById('olvide').classList.remove('oculto');
   }
+}
+async function olvideClave(){
+  if(!confirm('Para entrar sin la clave hay que borrar los datos guardados en este equipo. Si tienes un respaldo, después lo vuelves a cargar. ¿Continuar?'))return;
+  if(!confirm('Última confirmación: se borra todo lo de este equipo.'))return;
+  datos={clientes:[],prestamos:[],movimientos:[],cajas:null,config:{},pin:'',consec:0};
+  cajasDef();
+  await disco.guardar(JSON.stringify(datos));
+  location.reload();
 }
 
 /* ============ inicio ============ */
