@@ -260,7 +260,7 @@ h3.sec{font-size:13px;color:var(--suave);font-weight:500;margin:20px 0 4px}
     <input id="claveIn" inputmode="numeric" maxlength="4" type="password" autocomplete="one-time-code" name="clave-prestamos"
       style="text-align:center;font-size:28px;letter-spacing:12px"
       onkeyup="if(event.key==='Enter')entrar()"
-      oninput="this.value=this.value.replace(/\D/g,'');if(this.value.length===4)entrar()">
+      oninput="this.value=this.value.replace(/\D/g,'');document.getElementById('claveErr').textContent=''">
     <div id="claveErr" class="nota t-rojo" style="min-height:18px"></div>
     <button class="btn" onclick="entrar()">Entrar</button>
     <div id="olvide" class="oculto"><div class="nota" style="color:var(--fucsia);cursor:pointer;font-weight:600" onclick="olvideClave()">No recuerdo mi clave</div></div>
@@ -996,8 +996,8 @@ function entrar(){
   }else if(v.length>=4){
     intentos++;
     document.getElementById('claveErr').textContent='Clave incorrecta';
-    document.getElementById('claveIn').value='';
-    if(intentos>=3) document.getElementById('olvide').classList.remove('oculto');
+    setTimeout(()=>{document.getElementById('claveIn').value='';},600);
+    if(intentos>=2) document.getElementById('olvide').classList.remove('oculto');
   }
 }
 async function olvideClave(){
