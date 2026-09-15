@@ -129,6 +129,7 @@ h3.sec{font-size:13px;color:var(--suave);font-weight:500;margin:20px 0 4px}
 .aviso{background:var(--tarjeta2);border:1px solid var(--linea);border-radius:10px;padding:11px 12px;font-size:13.5px;color:var(--suave);margin-top:12px}
 .oculto{display:none}
 #bloqueo{position:fixed;inset:0;background:var(--fondo);z-index:60;display:flex;align-items:center;justify-content:center;padding:20px}
+#bloqueo.oculto{display:none}
 .cajaClave{background:var(--tarjeta);border:1px solid var(--linea);border-radius:14px;padding:24px 20px;width:100%;max-width:300px;text-align:center}
 
 /* recibo */
@@ -1017,7 +1018,7 @@ async function olvideClave(){
   datos.movimientos=datos.movimientos||[];
   datos.prestamos.forEach(p=>{p.pagos=p.pagos||[];p.renovaciones=p.renovaciones||0;p.plazo=p.plazo||15;p.caja=p.caja||'c1';p.congelado=!!p.congelado;});
   document.getElementById('cfgPin').value=datos.pin||'';
-  if(datos.pin){
+  if(datos.pin&&String(datos.pin).length===4){
     document.getElementById('bloqueo').classList.remove('oculto');
     setTimeout(()=>document.getElementById('claveIn').focus(),150);
   }
