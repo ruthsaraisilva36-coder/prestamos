@@ -215,6 +215,10 @@ h3.sec{font-size:13px;color:var(--suave);font-weight:500;margin:20px 0 4px}
       <option value="58">58 mm (el más común)</option>
       <option value="80">80 mm</option>
     </select>
+    <label>Condiciones del préstamo</label>
+    <textarea id="cfgCondiciones" rows="5" placeholder="Escribe aquí las condiciones que quieres que salgan al final del recibo"></textarea>
+    <div class="aviso">Salen impresas en letra pequeña antes de la firma. Escribe cada condición en su propia línea y mantenlas cortas para no gastar mucho papel. Si cambias algo, toca Guardar.</div>
+    <button class="btn fantasma" onclick="condicionesSugeridas()">Volver a las condiciones originales</button>
     <button class="btn" onclick="guardarConfig()">Guardar</button>
     <button class="btn fantasma" onclick="reciboPrueba()">Imprimir recibo de prueba</button>
 
@@ -669,7 +673,8 @@ function verPrestamo(id){
       <button class="btn fantasma" onclick="saldarTodo('${p.id}')">Pagó todo (${$$(s)})</button>
       ${p.congelado
         ? `<button class="btn fantasma" onclick="congelar('${p.id}')">Volver a cobrar intereses</button>`
-        : `${p.tasa?`<button class="btn fantasma" onclick="renovar('${p.id}')">Renovar ${p.plazo} días más (+${p.tasa}%)</button>`:''}
+        : `${p.tasa&&e.cod==='vencido'?`<button class="btn" onclick="formAtrasadas('${p.id}')">Cobrar ${p.plazo===15?'quincenas atrasadas':'períodos atrasados'}</button>`:''}
+           ${p.tasa?`<button class="btn fantasma" onclick="renovar('${p.id}')">Renovar ${p.plazo} días más (+${p.tasa}%)</button>`:''}
            <button class="btn fantasma" onclick="congelar('${p.id}')">Paralizar intereses</button>`}
       ${c.tlf?`<button class="btn wa" onclick="recordar('${p.id}')">Recordar por WhatsApp</button>`:''}
     `:''}
@@ -712,6 +717,44 @@ async function renovar(id){
   p.renovaciones=(p.renovaciones||0)+1;
   await persistir();verPrestamo(id);
 }
+function formAtrasadas(id){
+  const p=datos.prestamos.find(x=>x.id===id);
+  const dias=difDias(p.vence,hoyISO());
+  const n=Math.max(1,Math.ceil(dias/p.plazo));
+  const per=p.plazo===15?'quincenas':'períodos';
+  hoja(`<h2>Cobrar ${per} ${p.plazo===15?'atrasadas':'atrasados'}</h2>
+    <div class="aviso">${esc(cliente(p.clienteId).nombre)} tiene el préstamo vencido desde el <b>${fFechaLarga(p.vence)}</b>, hace ${dias} ${dias===1?'día':'días'}.</div>
+    <label>${per.charAt(0).toUpperCase()+per.slice(1)} a cobrar</label>
+    <input id="aN" inputmode="numeric" value="${n}" oninput="calcAtrasadas('${id}')">
+    <div class="nota">El sistema calculó ${n}. Puedes cambiar el número si acordaste otra cosa con el cliente.</div>
+    <div class="aviso" id="aPrevio"></div>
+    <button class="btn" onclick="aplicarAtrasadas('${id}')">Sumar intereses atrasados</button>
+    <button class="btn fantasma" onclick="verPrestamo('${id}')">Volver</button>`);
+  calcAtrasadas(id);
+}
+function datosAtrasadas(p){
+  const n=parseInt(document.getElementById('aN').value)||0;
+  const porPeriodo=Math.round(p.capital*p.tasa/100*100)/100;
+  const extra=Math.round(porPeriodo*n*100)/100;
+  return {n,porPeriodo,extra,vence:sumarDias(p.vence,p.plazo*n),saldoNuevo:Math.round((saldo(p)+extra)*100)/100};
+}
+function calcAtrasadas(id){
+  const p=datos.prestamos.find(x=>x.id===id),a=datosAtrasadas(p);
+  const box=document.getElementById('aPrevio');
+  if(a.n<1){box.textContent='Escribe cuántas '+(p.plazo===15?'quincenas':'períodos')+' vas a cobrar.';return;}
+  box.innerHTML=`${a.n} × ${$$(a.porPeriodo)} (${p.tasa}% de ${$$(p.capital)}) = <b>${$$(a.extra)}</b> de interés.<br>
+    Debe ahora ${$$(saldo(p))} y quedaría debiendo <b>${$$(a.saldoNuevo)}</b>.<br>
+    Nueva fecha de vencimiento: <b>${fFechaLarga(a.vence)}</b>.`;
+}
+async function aplicarAtrasadas(id){
+  const p=datos.prestamos.find(x=>x.id===id),a=datosAtrasadas(p);
+  if(a.n<1){alert('Escribe un número mayor que cero.');return;}
+  p.interes=Math.round((p.interes+a.extra)*100)/100;
+  p.vence=a.vence;
+  p.renovaciones=(p.renovaciones||0)+a.n;
+  await persistir();verPrestamo(id);
+}
+
 async function borrarPrestamo(id){
   if(!confirm('¿Eliminar este préstamo y su historial? No se puede deshacer.'))return;
   datos.prestamos=datos.prestamos.filter(x=>x.id!==id);
@@ -786,8 +829,27 @@ async function borrarCliente(id){
 function guardarConfig(){
   datos.config={negocio:document.getElementById('cfgNegocio').value.trim(),
                 tlf:document.getElementById('cfgTlf').value.trim(),
-                ancho:parseInt(document.getElementById('cfgAncho').value)||58};
+                ancho:parseInt(document.getElementById('cfgAncho').value)||58,
+                condiciones:document.getElementById('cfgCondiciones').value.trim()};
   persistir();alert('Listo. Así saldrá en los recibos.');
+}
+
+const CONDICIONES_BASE='- Préstamo en dólares a 15 días.\n- Interés del 25% por cada quincena.\n- Si no cancela el total al vencimiento, se renueva por 15 días más con su interés.\n- Conserve este recibo como comprobante de pago.';
+function condicionesActuales(){
+  const cfg=datos.config||{};
+  return cfg.condiciones===undefined?CONDICIONES_BASE:cfg.condiciones;
+}
+function condicionesSugeridas(){
+  const t=document.getElementById('cfgCondiciones');
+  if(t.value.trim()&&t.value.trim()!==CONDICIONES_BASE&&!confirm('¿Reemplazar lo que escribiste por las condiciones originales?'))return;
+  t.value=CONDICIONES_BASE;
+  t.focus();
+}
+
+function itemsCondiciones(){
+  const txt=(condicionesActuales()||'').trim();
+  if(!txt)return [];
+  return [{sep:1},{t:'CONDICIONES',c:'centro',b:1,s:15},{w:txt,s:15}];
 }
 
 function etiquetaInteres(p){
@@ -821,8 +883,9 @@ function itemsRecibo(p,idx){
     {l:'Abonado',r:$$(abonado)},
     {l:'Saldo',r:$$(Math.max(0,rest)),b:1},
     {l:rest>0.009?(difDias(hoyISO(),p.vence)<0?'Venció el':'Próximo pago'):'Estado',
-     r:rest>0.009?fFechaLarga(p.vence):'Cancelado'},
-    {sep:1},
+     r:rest>0.009?fFechaLarga(p.vence):'Cancelado'});
+  it.push(...itemsCondiciones());
+  it.push({sep:1},
     {t:'________________',c:'centro',s:16},
     {t:'Firma de quien recibe',c:'centro',s:14},
     {t:'Gracias por su pago',c:'centro',s:14});
@@ -834,6 +897,23 @@ function dibujarRecibo(items){
   const f=anchoPapel()===80?1.5:1;
   const W=Math.round(384*f),pad=Math.round(14*f);
   items=items.map(i=>i.s?Object.assign({},i,{s:Math.round(i.s*f)}):i);
+  const med=document.createElement('canvas').getContext('2d');
+  items=items.flatMap(i=>{
+    if(i.w===undefined)return [i];
+    med.font=i.s+'px monospace';
+    const lineas=[];
+    String(i.w).split(/\r?\n/).forEach(par=>{
+      par=par.trim(); if(!par)return;
+      let actual='';
+      par.split(/\s+/).forEach(pal=>{
+        const prueba=actual?actual+' '+pal:pal;
+        if(med.measureText(prueba).width<=W-pad*2||!actual)actual=prueba;
+        else{lineas.push(actual);actual=pal;}
+      });
+      if(actual)lineas.push(actual);
+    });
+    return lineas.map(l=>({t:l,s:i.s}));
+  });
   let h=pad*2+8;
   items.forEach(i=>h+=i.sep?Math.round(15*f):(i.s||Math.round(18*f))+9);
   const cv=document.createElement('canvas');
@@ -862,7 +942,7 @@ function dibujarRecibo(items){
 }
 
 function textoRecibo(items){
-  return items.map(i=>i.sep?'------------------------':(i.l!==undefined?i.l+': '+i.r:i.t)).join('\n');
+  return items.map(i=>i.sep?'------------------------':(i.l!==undefined?i.l+': '+i.r:(i.w!==undefined?i.w:i.t))).join('\n');
 }
 
 let reciboActual=null;
@@ -912,8 +992,9 @@ function reciboPrueba(){
     {t:'$00.00',c:'centro',b:1,s:32},
     {sep:1},
     {l:'Ancho del papel',r:anchoPapel()+' mm'},
-    {l:'1234567890',r:'ABCDEFGH'},
-    {sep:1},
+    {l:'1234567890',r:'ABCDEFGH'});
+  items.push(...itemsCondiciones());
+  items.push({sep:1},
     {t:'________________',c:'centro',s:16},
     {t:'Si se ve completo, está bien',c:'centro',s:14});
   const cv=dibujarRecibo(items);
@@ -1028,6 +1109,7 @@ async function olvideClave(){
   document.getElementById('cfgNegocio').value=cfg.negocio||'';
   document.getElementById('cfgTlf').value=cfg.tlf||'';
   document.getElementById('cfgAncho').value=String(cfg.ancho||58);
+  document.getElementById('cfgCondiciones').value=condicionesActuales();
   pintar();
 })();
 </script>
