@@ -708,9 +708,21 @@ async function borrarPago(id,i){
   const p=datos.prestamos.find(x=>x.id===id);
   p.pagos.splice(i,1);await persistir();verPrestamo(id);
 }
+/* Interés de cada quincena: % sobre lo que queda debiendo, sin pasar del % del capital */
+function interesesPeriodos(p,n){
+  const r2=v=>Math.round(v*100)/100;
+  let deuda=saldo(p);const lista=[];
+  for(let i=0;i<n;i++){
+    const base=Math.max(0,Math.min(deuda,p.capital));
+    const ext=r2(base*p.tasa/100);
+    lista.push({base:r2(base),extra:ext});
+    deuda=r2(deuda+ext);
+  }
+  return lista;
+}
 async function renovar(id){
   const p=datos.prestamos.find(x=>x.id===id);
-  const extra=Math.round(p.capital*p.tasa/100*100)/100;
+  const extra=interesesPeriodos(p,1)[0].extra;
   if(!confirm('Se le suma '+$$(extra)+' de interés y la fecha pasa al '+fFechaLarga(sumarDias(p.vence,p.plazo))+'. ¿Renovar?'))return;
   p.interes=Math.round((p.interes+extra)*100)/100;
   p.vence=sumarDias(p.vence,p.plazo);
@@ -733,16 +745,18 @@ function formAtrasadas(id){
   calcAtrasadas(id);
 }
 function datosAtrasadas(p){
-  const n=parseInt(document.getElementById('aN').value)||0;
-  const porPeriodo=Math.round(p.capital*p.tasa/100*100)/100;
-  const extra=Math.round(porPeriodo*n*100)/100;
-  return {n,porPeriodo,extra,vence:sumarDias(p.vence,p.plazo*n),saldoNuevo:Math.round((saldo(p)+extra)*100)/100};
+  const n=Math.min(parseInt(document.getElementById('aN').value)||0,60);
+  const lista=interesesPeriodos(p,n);
+  const extra=Math.round(lista.reduce((t,x)=>t+x.extra,0)*100)/100;
+  return {n,lista,extra,vence:sumarDias(p.vence,p.plazo*n),saldoNuevo:Math.round((saldo(p)+extra)*100)/100};
 }
 function calcAtrasadas(id){
   const p=datos.prestamos.find(x=>x.id===id),a=datosAtrasadas(p);
   const box=document.getElementById('aPrevio');
   if(a.n<1){box.textContent='Escribe cuántas '+(p.plazo===15?'quincenas':'períodos')+' vas a cobrar.';return;}
-  box.innerHTML=`${a.n} × ${$$(a.porPeriodo)} (${p.tasa}% de ${$$(p.capital)}) = <b>${$$(a.extra)}</b> de interés.<br>
+  const nom=p.plazo===15?'Quincena':'Período';
+  const det=a.lista.map((x,i)=>`${nom} ${i+1}: ${p.tasa}% de ${$$(x.base)} = ${$$(x.extra)}`).join('<br>');
+  box.innerHTML=`${det}<br>Total de interés: <b>${$$(a.extra)}</b>.<br>
     Debe ahora ${$$(saldo(p))} y quedaría debiendo <b>${$$(a.saldoNuevo)}</b>.<br>
     Nueva fecha de vencimiento: <b>${fFechaLarga(a.vence)}</b>.`;
 }
