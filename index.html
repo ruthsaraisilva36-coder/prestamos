@@ -667,6 +667,7 @@ function verPrestamo(id){
     <h3 class="sec">Contacto</h3>
     <div class="dato"><span>Cédula</span><b>${esc(c.cedula||'—')}</b></div>
     <div class="dato"><span>Teléfono</span><b>${esc(c.tlf||'—')}</b></div>
+    <button class="btn fantasma" onclick="verComprobante('${p.id}')">Comprobante de préstamo</button>
     <h3 class="sec">Abonos</h3>${pagos}
     ${s>0.009?`
       <button class="btn" onclick="formPago('${p.id}')">Registrar abono</button>
@@ -980,6 +981,62 @@ async function verRecibo(id,idx){
   document.getElementById('previa').appendChild(cv);
 }
 
+function itemsComprobante(p){
+  const c=cliente(p.clienteId),cfg=datos.config||{};
+  const r2=v=>Math.round(v*100)/100;
+  const intIni=p.tasa?r2(p.capital*p.tasa/100):r2(p.interes-0);
+  const venceIni=sumarDias(p.fecha,p.plazo||15);
+  const it=[{t:(cfg.negocio||'Comprobante de préstamo'),c:'centro',b:1,s:24}];
+  if(cfg.tlf) it.push({t:cfg.tlf,c:'centro',s:16});
+  it.push({sep:1},
+    {t:'COMPROBANTE DE PRÉSTAMO',c:'centro',b:1,s:18},
+    {l:'N°',r:'P-'+p.comprobante},
+    {l:'Fecha',r:fFechaLarga(p.fecha)},
+    {sep:1},
+    {t:'Recibí en préstamo',s:16},
+    {t:c.nombre,b:1,s:20});
+  if(c.cedula) it.push({l:'C.I.',r:c.cedula});
+  if(c.tlf) it.push({l:'Teléfono',r:c.tlf});
+  it.push({sep:1},
+    {t:'Monto prestado',c:'centro',s:16},
+    {t:$$(p.capital),c:'centro',b:1,s:32},
+    {sep:1},
+    {l:'Capital',r:$$(p.capital)},
+    {l:p.tasa?('Interés '+p.tasa+'% ('+p.plazo+' días)'):'Interés',r:$$(intIni)},
+    {l:'Total a pagar',r:$$(r2(p.capital+intIni)),b:1},
+    {l:'Fecha de pago',r:fFechaLarga(venceIni),b:1});
+  const cond=(condicionesActuales()||'').split(/\r?\n/)
+    .filter(l=>!/comprobante de pago/i.test(l)).join('\n').trim();
+  if(cond) it.push({sep:1},{t:'CONDICIONES',c:'centro',b:1,s:15},{w:cond,s:15});
+  it.push({sep:1},
+    {w:'Me comprometo a pagar el total indicado en la fecha acordada.',s:15},
+    {t:' ',s:10},
+    {t:'________________',c:'centro',s:16},
+    {t:'Firma del cliente',c:'centro',s:14},
+    {t:'C.I. '+(c.cedula||'____________'),c:'centro',s:14});
+  return it;
+}
+
+async function verComprobante(id){
+  const p=datos.prestamos.find(x=>x.id===id);if(!p)return;
+  if(!p.comprobante){
+    datos.consecPrest=(datos.consecPrest||0)+1;
+    p.comprobante=String(datos.consecPrest).padStart(4,'0');
+    await persistir();
+  }
+  const items=itemsComprobante(p);
+  const cv=dibujarRecibo(items);
+  reciboActual={cv,items,nombre:'prestamo-P-'+p.comprobante+'.png',tlf:cliente(p.clienteId).tlf};
+  hoja(`<h2>Comprobante de préstamo P-${p.comprobante}</h2>
+    <div class="previaRecibo" id="previa"></div>
+    <button class="btn" onclick="imprimirRecibo()">Imprimir</button>
+    <button class="btn fantasma" onclick="compartirRecibo()">Guardar o enviar imagen</button>
+    ${reciboActual.tlf?'<button class="btn wa" onclick="reciboWhatsapp()">Enviar por WhatsApp</button>':''}
+    <button class="btn fantasma" onclick="verPrestamo('${id}')">Volver</button>
+    <div class="aviso">Este lo firma el cliente cuando le entregas el dinero. Guárdalo tú como respaldo de lo que te debe.</div>`);
+  document.getElementById('previa').appendChild(cv);
+}
+
 function imprimirRecibo(){
   if(!reciboActual)return;
   const mm=anchoPapel();
@@ -1053,7 +1110,7 @@ async function borrarTodo(){
   if(!confirm('Se borra todo: clientes, préstamos, abonos y movimientos. Esto no se puede deshacer. ¿Continuar?'))return;
   if(!confirm('Última confirmación. ¿Seguro que quieres dejar el sistema vacío?'))return;
   const cajas=datos.cajas,cfg=datos.config;
-  datos={clientes:[],prestamos:[],movimientos:[],cajas:cajas,config:cfg,pin:datos.pin||'',consec:0};
+  datos={clientes:[],prestamos:[],movimientos:[],cajas:cajas,config:cfg,pin:datos.pin||'',consec:0,consecPrest:0};
   await persistir();
   alert('Listo, el sistema quedó vacío.');
 }
@@ -1099,7 +1156,7 @@ function entrar(){
 async function olvideClave(){
   if(!confirm('Para entrar sin la clave hay que borrar los datos guardados en este equipo. Si tienes un respaldo, después lo vuelves a cargar. ¿Continuar?'))return;
   if(!confirm('Última confirmación: se borra todo lo de este equipo.'))return;
-  datos={clientes:[],prestamos:[],movimientos:[],cajas:null,config:{},pin:'',consec:0};
+  datos={clientes:[],prestamos:[],movimientos:[],cajas:null,config:{},pin:'',consec:0,consecPrest:0};
   cajasDef();
   await disco.guardar(JSON.stringify(datos));
   location.reload();
