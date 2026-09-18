@@ -130,6 +130,8 @@ h3.sec{font-size:13px;color:var(--suave);font-weight:500;margin:20px 0 4px}
 .oculto{display:none}
 #bloqueo{position:fixed;inset:0;background:var(--fondo);z-index:60;display:flex;align-items:center;justify-content:center;padding:20px}
 #bloqueo.oculto{display:none}
+#acceso{position:fixed;inset:0;background:var(--fondo);z-index:70;display:flex;align-items:center;justify-content:center;padding:20px}
+#acceso.oculto{display:none}
 .cajaClave{background:var(--tarjeta);border:1px solid var(--linea);border-radius:14px;padding:24px 20px;width:100%;max-width:300px;text-align:center}
 
 /* recibo */
@@ -223,7 +225,7 @@ h3.sec{font-size:13px;color:var(--suave);font-weight:500;margin:20px 0 4px}
     <button class="btn fantasma" onclick="reciboPrueba()">Imprimir recibo de prueba</button>
 
     <h3 class="sec">Respaldo</h3>
-    <div class="aviso">Los datos se guardan en este mismo equipo. Si cambias de teléfono o borras el navegador, se pierden. Descarga el respaldo cada cierto tiempo y guárdalo en tu correo.</div>
+    <div class="aviso">Los datos se guardan en internet y los ves desde cualquier teléfono donde entres con tu correo. Igual descarga un respaldo de vez en cuando y guárdalo en tu correo.</div>
     <button class="btn fantasma" onclick="exportar()">Descargar respaldo</button>
     <button class="btn fantasma" onclick="document.getElementById('archivo').click()">Cargar respaldo</button>
     <input type="file" id="archivo" accept=".json" class="oculto" onchange="importar(event)">
@@ -233,10 +235,14 @@ h3.sec{font-size:13px;color:var(--suave);font-weight:500;margin:20px 0 4px}
       <div><label>Clave de 4 números</label><input id="cfgPin" inputmode="numeric" maxlength="4" placeholder="Sin clave"></div>
       <div style="display:flex;align-items:flex-end"><button class="btn fantasma" style="margin-top:0" onclick="guardarPin()">Guardar</button></div>
     </div>
-    <div class="nota">Déjala vacía y guarda para quitar la clave. Anótala en un lugar seguro: si se te olvida, tendrías que borrar los datos y volver a cargarlos desde el respaldo.</div>
+    <div class="nota">Déjala vacía y guarda para quitar la clave. Si se te olvida, toca "No recuerdo mi clave" y vuelve a entrar con tu correo; tus datos no se borran.</div>
+
+    <h3 class="sec">Sesión</h3>
+    <div class="nota">Conectada como <b id="cfgUsuario"></b></div>
+    <button class="btn fantasma" onclick="cerrarSesion()">Cerrar sesión en este teléfono</button>
 
     <h3 class="sec">Empezar de cero</h3>
-    <div class="aviso">Borra todos los clientes, préstamos y movimientos de este equipo. Úsalo para limpiar los datos de prueba antes de arrancar en serio.</div>
+    <div class="aviso">Borra todos los clientes, préstamos y movimientos, en todos los teléfonos. Úsalo solo para limpiar los datos de prueba antes de arrancar en serio.</div>
     <button class="btn peligro" onclick="borrarTodo()">Borrar todos los datos</button>
   </section>
 </div>
@@ -258,6 +264,22 @@ h3.sec{font-size:13px;color:var(--suave);font-weight:500;margin:20px 0 4px}
   </button>
 </nav>
 
+<div id="acceso">
+  <div class="cajaClave" style="max-width:340px">
+    <div style="font-size:19px;font-weight:600;margin-bottom:4px">Préstamos</div>
+    <div id="accMsg" class="nota" style="margin-bottom:10px">Conectando…</div>
+    <div id="accForm" class="oculto" style="text-align:left">
+      <label>Correo</label>
+      <input id="accCorreo" type="email" autocomplete="username" inputmode="email">
+      <label>Clave</label>
+      <input id="accClave" type="password" autocomplete="current-password" onkeyup="if(event.key==='Enter')iniciarSesion()">
+      <div id="accErr" class="nota t-rojo" style="min-height:18px;margin-top:6px"></div>
+      <button class="btn" onclick="iniciarSesion()">Entrar</button>
+      <div class="nota" style="margin-top:10px;text-align:center">Tus datos quedan guardados en internet. Entras con el mismo correo y clave desde cualquier teléfono.</div>
+    </div>
+  </div>
+</div>
+
 <div id="bloqueo" class="oculto">
   <div class="cajaClave">
     <div style="font-size:19px;font-weight:600;margin-bottom:6px">Escribe tu clave</div>
@@ -278,7 +300,28 @@ h3.sec{font-size:13px;color:var(--suave);font-weight:500;margin:20px 0 4px}
   <div class="hoja" id="hoja"><div class="agarre"></div><div id="contenido"></div></div>
 </div>
 
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
+/* ============ Firebase ============ */
+const firebaseConfig={
+  apiKey:"AIzaSyABNcoqYbTIq14GJ-GbVJaf_22Hze6wbag",
+  authDomain:"prestamos-e68f9.firebaseapp.com",
+  projectId:"prestamos-e68f9",
+  storageBucket:"prestamos-e68f9.firebasestorage.app",
+  messagingSenderId:"354518624391",
+  appId:"1:354518624391:web:792c4b35607d64e82bf022"
+};
+let fbOK=true,auth=null,db=null,docRef=null,usuario=null;
+try{
+  firebase.initializeApp(firebaseConfig);
+  auth=firebase.auth();
+  db=firebase.firestore();
+  db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
+  docRef=db.collection('negocio').doc('datos');
+}catch(e){fbOK=false;}
+
 /* ============ almacenamiento ============ */
 const LLAVE='prestamitas:datos';
 const disco={
@@ -289,10 +332,14 @@ const disco={
     }catch(e){return null;}
   },
   async guardar(txt){
-    try{
-      if(window.storage){await window.storage.set(LLAVE,txt);return;}
-      localStorage.setItem(LLAVE,txt);
-    }catch(e){alert('No se pudo guardar. Revisa el espacio del navegador.');}
+    try{localStorage.setItem(LLAVE,txt);}catch(e){}
+    if(usuario&&docRef){
+      docRef.set({json:txt,actualizado:firebase.firestore.FieldValue.serverTimestamp(),por:usuario.email||''})
+        .catch(e=>{
+          if(e&&e.code==='permission-denied') alert('Este usuario no tiene permiso para guardar. Revisa las reglas de Firestore.');
+          else alert('No se pudo guardar en internet: '+(e&&e.message||e));
+        });
+    }
   }
 };
 
@@ -899,11 +946,15 @@ function itemsRecibo(p,idx){
     {l:'Saldo',r:$$(Math.max(0,rest)),b:1},
     {l:rest>0.009?(difDias(hoyISO(),p.vence)<0?'Venció el':'Próximo pago'):'Estado',
      r:rest>0.009?fFechaLarga(p.vence):'Cancelado'});
+  const pagoCompleto=rest<=0.009;
+  if(pagoCompleto) it.push({sep:1},
+    {w:'¡Gracias por cumplir con el pago!',c:'centro',b:1,s:17},
+    {w:'Te felicito por ser responsable.',c:'centro',s:16});
   it.push(...itemsCondiciones());
   it.push({sep:1},
     {t:'________________',c:'centro',s:16},
-    {t:'Firma de quien recibe',c:'centro',s:14},
-    {t:'Gracias por su pago',c:'centro',s:14});
+    {t:'Firma de quien recibe',c:'centro',s:14});
+  if(!pagoCompleto) it.push({t:'Gracias por su pago',c:'centro',s:14});
   return it;
 }
 
@@ -915,7 +966,7 @@ function dibujarRecibo(items){
   const med=document.createElement('canvas').getContext('2d');
   items=items.flatMap(i=>{
     if(i.w===undefined)return [i];
-    med.font=i.s+'px monospace';
+    med.font=(i.b?'bold ':'')+i.s+'px monospace';
     const lineas=[];
     String(i.w).split(/\r?\n/).forEach(par=>{
       par=par.trim(); if(!par)return;
@@ -927,7 +978,7 @@ function dibujarRecibo(items){
       });
       if(actual)lineas.push(actual);
     });
-    return lineas.map(l=>({t:l,s:i.s}));
+    return lineas.map(l=>({t:l,s:i.s,c:i.c,b:i.b}));
   });
   let h=pad*2+8;
   items.forEach(i=>h+=i.sep?Math.round(15*f):(i.s||Math.round(18*f))+9);
@@ -1154,26 +1205,25 @@ function entrar(){
   }
 }
 async function olvideClave(){
-  if(!confirm('Para entrar sin la clave hay que borrar los datos guardados en este equipo. Si tienes un respaldo, después lo vuelves a cargar. ¿Continuar?'))return;
-  if(!confirm('Última confirmación: se borra todo lo de este equipo.'))return;
-  datos={clientes:[],prestamos:[],movimientos:[],cajas:null,config:{},pin:'',consec:0,consecPrest:0};
-  cajasDef();
-  await disco.guardar(JSON.stringify(datos));
+  if(!confirm('Para quitar la clave de 4 números tienes que volver a entrar con tu correo y clave. Tus datos no se borran. ¿Continuar?'))return;
+  try{localStorage.setItem('prestamitas:quitarPin','1');}catch(e){}
+  await auth.signOut();
+  location.reload();
+}
+async function cerrarSesion(){
+  if(!confirm('¿Cerrar sesión en este teléfono? Tus datos siguen guardados en internet.'))return;
+  await auth.signOut();
   location.reload();
 }
 
 /* ============ inicio ============ */
-(async function(){
-  const txt=await disco.leer();
-  if(txt){try{const d=JSON.parse(txt);if(d.clientes&&d.prestamos)datos=d;}catch(e){}}
+function normalizar(){
   cajasDef();
   datos.movimientos=datos.movimientos||[];
   datos.prestamos.forEach(p=>{p.pagos=p.pagos||[];p.renovaciones=p.renovaciones||0;p.plazo=p.plazo||15;p.caja=p.caja||'c1';p.congelado=!!p.congelado;});
+}
+function llenarConfig(){
   document.getElementById('cfgPin').value=datos.pin||'';
-  if(datos.pin&&String(datos.pin).length===4){
-    document.getElementById('bloqueo').classList.remove('oculto');
-    setTimeout(()=>document.getElementById('claveIn').focus(),150);
-  }
   document.getElementById('cfgCaja1').value=datos.cajas[0].nombre;
   document.getElementById('cfgCaja2').value=datos.cajas[1].nombre;
   const cfg=datos.config||{};
@@ -1181,7 +1231,79 @@ async function olvideClave(){
   document.getElementById('cfgTlf').value=cfg.tlf||'';
   document.getElementById('cfgAncho').value=String(cfg.ancho||58);
   document.getElementById('cfgCondiciones').value=condicionesActuales();
-  pintar();
+  const u=document.getElementById('cfgUsuario');if(u)u.textContent=usuario?usuario.email:'';
+}
+function msgAcceso(t,form){
+  document.getElementById('accMsg').textContent=t;
+  document.getElementById('accForm').classList.toggle('oculto',!form);
+}
+async function iniciarSesion(){
+  const c=document.getElementById('accCorreo').value.trim(),k=document.getElementById('accClave').value;
+  const err=document.getElementById('accErr');err.textContent='';
+  if(!c||!k){err.textContent='Escribe tu correo y tu clave.';return;}
+  try{await auth.signInWithEmailAndPassword(c,k);}
+  catch(e){
+    const m={'auth/invalid-credential':'Correo o clave incorrectos.','auth/wrong-password':'Clave incorrecta.','auth/user-not-found':'Ese correo no está registrado.','auth/invalid-email':'El correo no es válido.','auth/too-many-requests':'Muchos intentos. Espera unos minutos.','auth/network-request-failed':'Sin internet. Revisa tu conexión.'};
+    err.textContent=m[e.code]||('No se pudo entrar: '+(e.message||e.code));
+  }
+}
+let arrancado=false,quitarSnap=null;
+function arrancar(){
+  normalizar();llenarConfig();
+  let quitar=false;try{quitar=localStorage.getItem('prestamitas:quitarPin')==='1';}catch(e){}
+  if(quitar){
+    try{localStorage.removeItem('prestamitas:quitarPin');}catch(e){}
+    if(datos.pin){datos.pin='';persistir();alert('Listo, se quitó la clave de 4 números. Puedes poner una nueva en Caja.');}
+  }else if(datos.pin&&String(datos.pin).length===4){
+    document.getElementById('bloqueo').classList.remove('oculto');
+    setTimeout(()=>document.getElementById('claveIn').focus(),150);
+  }
+  document.getElementById('acceso').classList.add('oculto');
+  pintar();arrancado=true;
+}
+function escuchar(){
+  if(quitarSnap)quitarSnap();
+  quitarSnap=docRef.onSnapshot({includeMetadataChanges:true},async snap=>{
+    if(!snap.exists){
+      if(snap.metadata.fromCache){msgAcceso('Cargando tus datos… (necesita internet la primera vez)',false);return;}
+      // primera vez: subir lo que haya en este teléfono
+      let local=null;try{local=localStorage.getItem(LLAVE);}catch(e){}
+      if(local){try{const d=JSON.parse(local);if(d.clientes&&d.prestamos)datos=d;}catch(e){}}
+      normalizar();
+      await disco.guardar(JSON.stringify(datos));
+      if(!arrancado)arrancar();
+      return;
+    }
+    if(snap.metadata.hasPendingWrites&&arrancado)return;
+    const txt=(snap.data()||{}).json;
+    let d=null;try{d=JSON.parse(txt);}catch(e){}
+    if(!d||!d.clientes||!d.prestamos)return;
+    const nuevo=JSON.stringify(d);
+    if(arrancado&&nuevo===JSON.stringify(datos))return;
+    datos=d;normalizar();
+    try{localStorage.setItem(LLAVE,nuevo);}catch(e){}
+    if(!arrancado)arrancar();else{llenarConfig();pintar();}
+  },e=>{
+    if(e&&e.code==='permission-denied'){
+      msgAcceso('Este correo no tiene permiso para ver los datos. Revisa las reglas de Firestore.',false);
+      document.getElementById('acceso').classList.remove('oculto');
+    }else msgAcceso('Error al cargar: '+(e.message||e.code),false);
+  });
+}
+(function(){
+  if(!fbOK){msgAcceso('No se pudo conectar. Revisa tu internet y vuelve a abrir.',false);return;}
+  auth.onAuthStateChanged(u=>{
+    usuario=u;
+    if(!u){
+      if(quitarSnap){quitarSnap();quitarSnap=null;}
+      arrancado=false;
+      document.getElementById('acceso').classList.remove('oculto');
+      msgAcceso('Entra con tu correo y clave',true);
+      return;
+    }
+    msgAcceso('Cargando tus datos…',false);
+    escuchar();
+  });
 })();
 </script>
 </body>
